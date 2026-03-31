@@ -29,6 +29,9 @@
 #endif
 
 #include <ctype.h>
+#include <malloc.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,7 +42,6 @@ namespace w6300_evb_pico2_serial_console {
 // ---------------------------------------------------------------------------
 // Network / hardware settings
 // ---------------------------------------------------------------------------
-constexpr char     kPlcHost[]       = "192.168.250.100";
 constexpr uint16_t kPlcPort         = 1025;
 const IPAddress    kLocalIp(192, 168, 250, 110);
 const IPAddress    kDns(192, 168, 250, 1);
@@ -376,6 +378,8 @@ slmp::SlmpClient plc(transport_router,
 // ---------------------------------------------------------------------------
 char   serial_line[kSerialLineCapacity] = {};
 size_t serial_line_length               = 0;
+char   plc_host[64]                     = "192.168.250.100";
+char   cached_plc_model[32]             = "disconnected";
 bool   ethernet_ready                   = false;
 bool   led_ready                        = false;
 bool   switch_raw_pressed               = false;
@@ -415,12 +419,23 @@ void stopWatch();
 #include "console_watch.h"
 #include "console_commands.h"
 #include "console_tests.h"
+#include "console_tui.h"
 
 // ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
 void printHelp() {
-    Serial.println(F("=== SLMP Serial Console ==="));
+    Serial.println(F("=== SLMP W6300 Demo Console ==="));
+    Serial.println(F("[Demo TUI]"));
+    Serial.println(F("  home | view <home|connect|read|write|watch|batch|stress|system|log>"));
+    Serial.println(F("  1..9 menu shortcuts    refresh    ansi [on|off]"));
+    Serial.println(F("  host <ip-or-name>"));
+    Serial.println(F("  qr/qrb/qrd <dev> [pts]"));
+    Serial.println(F("  qw/qwb/qwd <dev> <val...>"));
+    Serial.println(F("  wa/wab/wad <dev> [pts]    wdel <index>    wclear"));
+    Serial.println(F("  batch/batchb/batchd <dev> [pts]    brun"));
+    Serial.println(F("  stressw/stressb/stressd <dev> [pts] [ms]"));
+    Serial.println(F("  stress [start|stop|status]"));
     Serial.println(F("[Connection]"));
     Serial.println(F("  connect | close | reinit | status | type | dump"));
     Serial.println(F("  transport [tcp|udp]    frame [3e|4e]    compat [iqr|legacy]"));
@@ -466,10 +481,18 @@ void printHelp() {
 void handleCommand(char* line) {
     char* tokens[kMaxTokens] = {};
     const int token_count = splitTokens(line, tokens, static_cast<int>(kMaxTokens));
-    if (token_count == 0) { printPrompt(); return; }
+    if (token_count == 0) {
+        if (!demo_ui.ansi_enabled) printPrompt();
+        return;
+    }
 
     uppercaseInPlace(tokens[0]);
     const char* cmd = tokens[0];
+
+    if (handleDemoCommand(tokens, token_count)) {
+        if (!demo_ui.ansi_enabled) printPrompt();
+        return;
+    }
 
     // --- Connection ---
     if (strcmp(cmd, "HELP") == 0 || strcmp(cmd, "?") == 0) {
@@ -597,7 +620,7 @@ void handleCommand(char* line) {
         printHelp();
     }
 
-    printPrompt();
+    if (!demo_ui.ansi_enabled) printPrompt();
 }
 
 // ---------------------------------------------------------------------------
@@ -607,7 +630,7 @@ void setup() {
     Serial.begin(115200);
     while (!Serial) { delay(10); }
 
-    Serial.println(F("SLMP W6300-EVB-Pico2 serial console"));
+    Serial.println(F("SLMP W6300-EVB-Pico2 demo console"));
     plc.setFrameType(console_link.frame_type);
     plc.setTimeoutMs(2000);
 
@@ -617,24 +640,25 @@ void setup() {
 #endif
 
     (void)bringUpEthernet();
+    initializeDemoTui();
     printHelp();
-    Serial.print(F("transport="));  Serial.println(transportModeText(console_link.transport_mode));
-    Serial.print(F("frame="));      Serial.println(frameTypeText(console_link.frame_type));
-
-    // Startup probe: show PLC model + D100..D101 if reachable
-    if (connectPlc(false)) {
-        printTypeName();
-        readWordsCommand(const_cast<char*>("D100"), const_cast<char*>("2"));
-    }
-    printPrompt();
+    (void)connectPlc(false);
+    refreshDemoDashboardData(true);
+    requestDemoRender();
+    if (!demo_ui.ansi_enabled) printPrompt();
 }
 
 void loop() {
+    const uint32_t loop_started_us = micros();
     pollBoardSwitch();
     applyLedState();
     pollEnduranceTest();
     pollReconnectTest();
     pollWatch();
+    pollDemoWatchList();
+    pollDemoBatch();
+    pollDemoStress();
+    pollDemoSystemMetrics();
 
     while (Serial.available() > 0) {
         const int raw = Serial.read();
@@ -646,6 +670,7 @@ void loop() {
             handleCommand(serial_line);
             serial_line_length = 0;
             serial_line[0] = '\0';
+            requestDemoRender();
             continue;
         }
         if (serial_line_length + 1 >= sizeof(serial_line)) {
@@ -653,11 +678,14 @@ void loop() {
             Serial.println(F("line too long"));
             serial_line_length = 0;
             serial_line[0] = '\0';
-            printPrompt();
+            if (!demo_ui.ansi_enabled) printPrompt();
             continue;
         }
         serial_line[serial_line_length++] = ch;
     }
+
+    noteDemoLoopSample(micros() - loop_started_us);
+    renderDemoScreenIfNeeded();
 }
 
 }  // namespace w6300_evb_pico2_serial_console
