@@ -6,22 +6,67 @@ This repository hosts the board-specific console programs that were split out of
 
 ## Included Console Targets
 
-- `examples/atom_matrix_serial_console`
 - `examples/w6300_evb_pico2_serial_console`
+- `examples/atom_matrix_serial_console`
+
+The W6300 target is the primary demo application. It now focuses on a richer ANSI dashboard that shows:
+
+- live connection and route settings
+- quick read / quick write actions
+- watch slots and batch reads
+- stress counters and latency
+- system metrics such as estimated CPU load and free heap
+
+The Atom Matrix target is intentionally minimal and keeps only basic SLMP connectivity and read/write commands.
 
 ## Dependency
 
 The console sketches depend on the SLMP minimal library:
 
-- GitHub: <https://github.com/fa-yoshinobu/plc-comm-slmp-cpp-minimal>
+- PlatformIO Registry: <https://registry.platformio.org/libraries/fa-yoshinobu/slmp-connect-cpp-minimal>
 
-PlatformIO uses the library directly from GitHub in `platformio.ini`.
+PlatformIO uses the registry package in `platformio.ini`:
+
+```ini
+lib_deps =
+  fa-yoshinobu/slmp-connect-cpp-minimal@^0.4.1
+```
 
 ## Quick Start
 
 ```bash
-pio run -e m5stack-atom-console
-pio run -e wiznet_6300_evb_pico2
+python -m platformio run -e m5stack-atom-console
+python -m platformio run -e wiznet_6300_evb_pico2
+```
+
+For repeated local builds on Windows, use the helper script so the same PlatformIO cache directory is reused:
+
+```bat
+build_console.bat
+build_console.bat w6300
+build_console.bat atom
+```
+
+By default the helper scripts use a short cache path on the current drive:
+
+```text
+%~d0\pio
+```
+
+If another machine needs a different cache location, set `PLATFORMIO_CORE_DIR` before running the scripts.
+
+`cmd.exe`:
+
+```bat
+set PLATFORMIO_CORE_DIR=E:\pio-cache
+build_console.bat w6300
+```
+
+PowerShell:
+
+```powershell
+$env:PLATFORMIO_CORE_DIR = 'E:\pio-cache'
+cmd /c build_console.bat w6300
 ```
 
 For the W6300 console CLI:

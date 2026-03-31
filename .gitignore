@@ -1,5 +1,6 @@
 .pio/
 .platformio-home/
+.platformio-home-*/
 .vscode/
 release-artifacts/
 *.log

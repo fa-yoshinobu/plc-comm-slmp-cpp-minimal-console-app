@@ -219,7 +219,7 @@ bool connectPlc(bool verbose) {
     }
     plc.setFrameType(console_link.frame_type);
     plc.setCompatibilityMode(console_link.compatibility_mode);
-    if (!plc.connect(kPlcHost, console_link.plc_port)) {
+    if (!plc.connect(plc_host, console_link.plc_port)) {
         if (verbose) {
             Serial.print(F("connect failed: "));
             Serial.println(slmp::errorString(plc.lastError()));
@@ -235,8 +235,10 @@ bool connectPlc(bool verbose) {
         if (type_name_ok) {
             Serial.print(F("model=")); Serial.print(type_name.model);
             if (type_name.has_model_code) { Serial.print(F(" code=0x")); Serial.print(type_name.model_code, HEX); }
+            copyText(cached_plc_model, sizeof(cached_plc_model), type_name.model);
             Serial.println();
         } else {
+            copyText(cached_plc_model, sizeof(cached_plc_model), "unknown");
             Serial.println(F("model=unknown"));
         }
         Serial.println(F("connected"));
@@ -246,6 +248,7 @@ bool connectPlc(bool verbose) {
 
 void closePlc() {
     plc.close();
+    copyText(cached_plc_model, sizeof(cached_plc_model), "disconnected");
     Serial.println(F("closed"));
 }
 
@@ -348,7 +351,8 @@ void printEvidenceHeader() {
     Serial.println(F("--- Evidence Header ---"));
     Serial.println(F("board=W6300-EVB-Pico2 (RP2350)"));
     Serial.print(F("local_ip=")); Serial.println(Ethernet.localIP());
-    Serial.print(F("plc_host=")); Serial.println(kPlcHost);
+    Serial.print(F("plc_host=")); Serial.println(plc_host);
+    Serial.print(F("plc_host_runtime=")); Serial.println(plc_host);
     Serial.print(F("plc_port=")); Serial.println(console_link.plc_port);
     Serial.print(F("transport=")); Serial.println(transportModeText(console_link.transport_mode));
     Serial.print(F("frame="));    Serial.println(frameTypeText(console_link.frame_type));
@@ -374,6 +378,7 @@ void printStatus() {
     Serial.print(F("transport="));     Serial.println(transportModeText(console_link.transport_mode));
     Serial.print(F("frame="));         Serial.println(frameTypeText(console_link.frame_type));
     Serial.print(F("compat="));        Serial.println(compatibilityModeText(console_link.compatibility_mode));
+    Serial.print(F("plc_host="));      Serial.println(plc_host);
     Serial.print(F("plc_port="));      Serial.println(console_link.plc_port);
     Serial.print(F("plc_connected=")); Serial.println(plc.connected() ? F("yes") : F("no"));
     Serial.print(F("tx_buffer_bytes="));Serial.println(sizeof(tx_buffer));
